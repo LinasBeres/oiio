@@ -1,0 +1,11 @@
+--- CMakeLists.txt	2018-12-08 06:05:38.000000000 +0000
++++ CMakeLists.txt	2019-09-10 10:14:05.597535896 +0000
+@@ -51,6 +51,8 @@
+     set_property (GLOBAL PROPERTY USE_FOLDERS ON)
+ endif ()
+ 
++find_package(fmt 5.3.0 REQUIRED)
++
+ include (GNUInstallDirs)
+ 
+ list(APPEND CMAKE_MODULE_PATH

@@ -51,6 +51,8 @@ if (CMAKE_USE_FOLDERS)
     set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 endif ()
 
+find_package(fmt 5.3.0 REQUIRED)
+
 include (GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH
@@ -62,6 +64,7 @@ include (platform)
 include (compiler)   # All the C++ and compiler related options live here
 
 
+# set(OpenGL_GL_PREFERENCE "LEGACY" CACHE STRING "Preferred GL library to use (see https://cmake.org/cmake/help/v3.12/policy/CMP0072.html)")
 option (VERBOSE "Print lots of messages while compiling" OFF)
 set (${PROJ_NAME}_NAMESPACE ${PROJECT_NAME} CACHE STRING
       "Customized outer namespace base name (version will be added)")
@@ -95,6 +98,7 @@ option (USE_FREETYPE "Use Freetype if found" ON)
 option (USE_GIF "Use GIF if found" ON)
 option (USE_PTEX "Use PTex if found" ON)
 option (USE_WEBP "Use WebP if found" ON)
+option (USE_BRAW "Use braw if found" ON)
 option (USE_LIBRAW "Use LibRaw if found" ON)
 set (LIBRAW_PATH "" CACHE STRING "Custom LibRaw path")
 option (OIIO_THREAD_ALLOW_DCLP "OIIO threads may use DCLP for speed" ON)

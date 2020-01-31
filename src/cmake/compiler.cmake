@@ -351,10 +351,10 @@ if (CLANG_FORMAT_EXE)
     # Start with the list of files to include when formatting...
     file (GLOB_RECURSE FILES_TO_FORMAT ${CLANG_FORMAT_INCLUDES})
     # ... then process any list of excludes we are given
-    foreach (_pat ${CLANG_FORMAT_EXCLUDES})
-        file (GLOB_RECURSE _excl ${_pat})
-        list (REMOVE_ITEM FILES_TO_FORMAT ${_excl})
-    endforeach ()
+    # foreach (_pat ${CLANG_FORMAT_EXCLUDES})
+        # file (GLOB_RECURSE _excl ${_pat})
+        # list (REMOVE_ITEM FILES_TO_FORMAT ${_excl})
+    # endforeach ()
     #message (STATUS "clang-format file list: ${FILES_TO_FORMAT}")
     file (COPY ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format
           DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
