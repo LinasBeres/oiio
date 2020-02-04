@@ -1,3 +1,7 @@
+/*
+ Created by Linas Beresna.
+ */
+
 #include "BlackmagicRawAPI.h"
 
 #include <OpenImageIO/dassert.h>
@@ -12,7 +16,7 @@ namespace filesystem = boost::filesystem;
 
 #include <vector>
 
-int COUNTER = 0; // WHY THE FUCK IS IT THREADED, WHY THE FUCK?
+#define DEBUG 0
 
 OIIO_PLUGIN_NAMESPACE_BEGIN
 
@@ -25,6 +29,10 @@ class BrawInput final : public ImageInput {
 		virtual const char* format_name(void) const override { return "braw"; }
 		virtual bool open(const std::string& name, ImageSpec& newspec) override;
 		virtual bool close() override;
+    virtual int supports(string_view feature) const override
+    {
+        return (feature == "exif");
+    }
 		virtual int current_subimage(void) const override
 		{
 			lock_guard lock(m_mutex);
@@ -35,14 +43,13 @@ class BrawInput final : public ImageInput {
 				void* data) override;
 		void storeImageData(void* imageData);
 		bool readFrame(uint64_t frameIndex);
+		bool getMetadata(ImageSpec &spec);
 
 	private:
 		CameraCodecCallback* m_callback;
 		IBlackmagicRawFactory* m_factory;
 		IBlackmagicRaw* m_codec;
 		IBlackmagicRawClip* m_clip;
-		IBlackmagicRawJob* m_readJob;
-		IBlackmagicRawClipEx* m_clipEx;
 
 		long int m_number_channels;
 		uint64_t m_frame_count;
@@ -62,8 +69,6 @@ class BrawInput final : public ImageInput {
 			m_factory	        = nullptr;
 			m_codec           = nullptr;
 			m_clip            = nullptr;
-			m_readJob         = nullptr;
-			m_clipEx          = nullptr;
 			m_number_channels = 0;
 			m_width           = 0;
 			m_height          = 0;
@@ -99,20 +104,28 @@ OIIO_EXPORT const char* braw_input_extensions[] = { "braw", nullptr };
 OIIO_PLUGIN_EXPORTS_END
 
 ////////////////////////////////////////////////////////////////////////
-// HELPER FUNCTIONS AND CLASSES FOR BLACK MAGIC RAW API
+/////// Callback class to get data from BlackmagicRAWAPI ///////////////
 ////////////////////////////////////////////////////////////////////////
 class CameraCodecCallback : public IBlackmagicRawCallback
 {
 	public:
 		explicit CameraCodecCallback(BrawInput* brawInput) : m_brawInput(brawInput) {}
-		virtual ~CameraCodecCallback() {}
+		virtual ~CameraCodecCallback()
+		{
+			if(m_frame != nullptr)
+				m_frame->Release();
+		}
+
+		IBlackmagicRawFrame* GetFrame() { return m_frame; }
 
 		virtual void ReadComplete(IBlackmagicRawJob* readJob, HRESULT result, IBlackmagicRawFrame* frame)
 		{
 			IBlackmagicRawJob* decodeAndProcessJob = nullptr;
 
-			// if (result == S_OK)
-			// VERIFY(frame->SetResourceFormat(s_resourceFormat));
+			if(result == S_OK) {
+				m_frame = frame;
+				m_frame->AddRef();
+			}
 
 			if (result == S_OK)
 				result = frame->CreateJobDecodeAndProcessFrame(nullptr, nullptr, &decodeAndProcessJob);
@@ -135,8 +148,9 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 			if (result == S_OK)
 				result = processedImage->GetResource(&imageData);
 
-			if (result == S_OK)
+			if (result == S_OK) {
 				m_brawInput->storeImageData(imageData);
+			}
 
 			job->Release();
 		}
@@ -164,8 +178,11 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 		}
 	private:
 		BrawInput* m_brawInput;
+		IBlackmagicRawFrame* m_frame = nullptr;
 };
 
+//////////////////////////////////////////////////////////////////////////
+///////////////////// BrawInput Plugic Functions /////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
 	bool
@@ -175,38 +192,39 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 #else
+#if DEBUG
 	std::cerr << "BRAW_LIBRARIES are not defined, therefore cannot construct BlackmagicRawFactory\n";
+#endif
 	return false;
 #endif
 
 	filesystem::path lib_path(STRINGIFY(BRAW_LIBRARIES));
-	// std::cerr << "lib_dir: " << lib_path.parent_path() << "\n";
-
-	// FUCK OFF THREADS
-	// COUNTER++;
-	// if(COUNTER > 1)
-		// return true;
 
 	m_number_channels = 4;  // Black magic has 4 channels?
 
 	HRESULT result = S_OK;
 
-	// Create factory job to read the files
 	m_factory = CreateBlackmagicRawFactoryInstanceFromPath(lib_path.parent_path().c_str());
 	if (m_factory == nullptr) {
+#if DEBUG
 		std::cerr << "Failed to create IBlackmagicRawFactory!" << std::endl;
+#endif
 		return false;
 	}
 
 	result = m_factory->CreateCodec(&m_codec);
 	if (result != S_OK) {
+#if DEBUG
 		std::cerr << "Failed to create IBlackmagicRaw!" << std::endl;
+#endif
 		return false;
 	}
 
 	result = m_codec->OpenClip(name.c_str(), &m_clip);
 	if (result != S_OK) {
+#if DEBUG
 		std::cerr << "Failed to open IBlackmagicRawClip!" << std::endl;
+#endif
 		return false;
 	}
 
@@ -220,31 +238,216 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
 	m_callback = new CameraCodecCallback(this);
 	result = m_codec->SetCallback(m_callback);
 	if (result != S_OK) {
+#if DEBUG
 		std::cerr << "Failed to set IBlackmagicRawCallback!" << std::endl;
+#endif
 		return false;
 	}
 
 	m_spec = ImageSpec((int)m_width, (int)m_height, m_number_channels, TypeDesc::UINT8);
 	newspec = m_spec;
 	newspec.alpha_channel = 4;
-	newspec.attribute("oiio:ColorSpace", "sRGB");
+	newspec.attribute("oiio:ColorSpace", "linear");
 	newspec.attribute("oiio:Movie", true);
 
 	m_nsubimages = m_frame_count;
 
-	// std::cerr << "Width: " << m_width
-		// << "\nHeight: " << m_height
-		// << "\nFrame Count: " << m_frame_count
-		// << "\nFrame Rate: " << m_frame_rate << "\n";
+	IBlackmagicRawClipProcessingAttributes* clipProcessingAttributes = nullptr;
 
+	// std::cerr << "\n";
+	// getMetadata(newspec);
+	// std::cerr << "\n";
+
+#if DEBUG
+	std::cerr << "Width: " << m_width
+		<< "\nHeight: " << m_height
+		<< "\nFrame Count: " << m_frame_count
+		<< "\nFrame Rate: " << m_frame_rate << "\n";
+#endif
+
+	return true;
+}
+
+bool
+BrawInput::getMetadata(ImageSpec &spec)
+{
+	// Metadata
+	IBlackmagicRawMetadataIterator* clipMetadataIterator = nullptr;
+	const char *key = nullptr;
+	Variant value;
+
+	HRESULT result = m_clip->GetMetadataIterator(&clipMetadataIterator);
+	if (result != S_OK) {
+#if DEBUG
+		std::cerr << "Failed to get metdata iterator\n";
+#endif
+		return false;
+	}
+
+	while (SUCCEEDED(clipMetadataIterator->GetKey(&key))) {
+		std::cerr << "Key - " << key << ": value - ";
+		VariantInit(&value);
+
+		result = clipMetadataIterator->GetData(&value);
+		if (result != S_OK)
+		{
+#if DEBUG
+			std::cerr << "Failed to get data from IBlackmagicRawMetadataIterator!" << std::endl;}
+#endif
+			break;
+		}
+
+		BlackmagicRawVariantType variantType = value.vt;
+		switch (variantType)
+		{
+			case blackmagicRawVariantTypeS16:
+			{
+				short s16 = value.iVal;
+				std::cout << s16;
+			}
+			break;
+			case blackmagicRawVariantTypeU16:
+			{
+				unsigned short u16 = value.uiVal;
+				std::cout << u16;
+			}
+			break;
+			case blackmagicRawVariantTypeS32:
+			{
+				int i32 = value.intVal;
+				std::cout << i32;
+			}
+			break;
+			case blackmagicRawVariantTypeU32:
+			{
+				unsigned int u32 = value.uintVal;
+				std::cout << u32;
+			}
+			break;
+			case blackmagicRawVariantTypeFloat32:
+			{
+				float f32 = value.fltVal;
+				std::cout << f32;
+			}
+			break;
+			case blackmagicRawVariantTypeString:
+			{
+				std::cout << value.bstrVal;
+			}
+			break;
+			case blackmagicRawVariantTypeSafeArray:
+			{
+				SafeArray* safeArray = value.parray;
+
+				void* safeArrayData = nullptr;
+				result = SafeArrayAccessData(safeArray, &safeArrayData);
+				if (result != S_OK)
+				{
+#if DEBUG
+					std::cerr << "Failed to access safeArray data!" << std::endl;
+#endif
+					break;
+				}
+
+				BlackmagicRawVariantType arrayVarType;
+				result = SafeArrayGetVartype(safeArray, &arrayVarType);
+				if (result != S_OK)
+				{
+#if DEBUG
+					std::cerr << "Failed to get BlackmagicRawVariantType from safeArray!" << std::endl;
+#endif
+					break;
+				}
+
+				long lBound;
+				result = SafeArrayGetLBound(safeArray, 1, &lBound);
+				if (result != S_OK)
+				{
+#if DEBUG
+					std::cerr << "Failed to get LBound from safeArray!" << std::endl;
+#endif
+					break;
+				}
+
+				long uBound;
+				result = SafeArrayGetUBound(safeArray, 1, &uBound);
+				if (result != S_OK)
+				{
+#if DEBUG
+					std::cerr << "Failed to get UBound from safeArray!" << std::endl;
+#endif
+					break;
+				}
+
+				long safeArrayLength = (uBound - lBound) + 1;
+				long arrayLength = safeArrayLength > 32 ? 32 : safeArrayLength;
+
+				for (int i = 0; i < arrayLength; ++i)
+				{
+					switch (arrayVarType)
+					{
+						case blackmagicRawVariantTypeU8:
+						{
+							int u8 = static_cast<int>(static_cast<unsigned char*>(safeArrayData)[i]);
+						if (i > 0)
+							std::cout << ",";
+						std::cout << u8;
+						}
+						break;
+						case blackmagicRawVariantTypeS16:
+						{
+							short s16 = static_cast<short*>(safeArrayData)[i];
+							std::cout << s16 << " ";
+						}
+						break;
+						case blackmagicRawVariantTypeU16:
+						{
+							unsigned short u16 = static_cast<unsigned short*>(safeArrayData)[i];
+							std::cout << u16 << " ";
+						}
+						break;
+						case blackmagicRawVariantTypeS32:
+						{
+							int i32 = static_cast<int*>(safeArrayData)[i];
+							std::cout << i32 << " ";
+						}
+						break;
+						case blackmagicRawVariantTypeU32:
+						{
+							unsigned int u32 = static_cast<unsigned int*>(safeArrayData)[i];
+							std::cout << u32 << " ";
+						}
+						break;
+						case blackmagicRawVariantTypeFloat32:
+						{
+							float f32 = static_cast<float*>(safeArrayData)[i];
+							std::cout << f32 << " ";
+						}
+						break;
+						default:
+							break;
+					}
+				}
+			}
+			default:
+				break;
+		}
+
+		VariantClear(&value);
+
+		std::cout << std::endl;
+
+		clipMetadataIterator->Next();
+	}
+
+	if(clipMetadataIterator != nullptr)
+		clipMetadataIterator->Release();
 	return true;
 }
 
 	bool
 BrawInput::close()
 {
-	if(m_clipEx != nullptr)
-		m_clipEx->Release();
 	if(m_clip != nullptr)
 		m_clip->Release();
 	if(m_codec != nullptr)
@@ -277,10 +480,7 @@ BrawInput::seek_subimage(int subimage, int miplevel)
 BrawInput::read_native_scanline(int subimage, int miplevel, int y, int z,
 		void* data)
 {
-	// std::cerr << "About to start read_native_scanline\n";
-
 	lock_guard lock(m_mutex);
-	std::cerr << "subimage: " << subimage << " miplevel: " << miplevel << "\n";
 
 	if (!seek_subimage(subimage, miplevel))
 		return false;
@@ -306,13 +506,18 @@ BrawInput::readFrame(uint64_t frameIndex)
 
 	result = m_clip->CreateJobReadFrame(frameIndex, &readJob);
 	if (result != S_OK) {
+#if DEBUG
 		std::cerr << "Failed to create IBlackmagicRawJob!" << std::endl;
+#endif
 		return false;
 	}
 
 	result = readJob->Submit();
 	if (result != S_OK) {
+		readJob->Release();
+#if DEBUG
 		std::cerr << "Failed to submit IBlackmagicRawJob!" << std::endl;
+#endif
 		return false;
 	}
 	m_codec->FlushJobs();
@@ -338,11 +543,7 @@ BrawInput::storeImageData(void* imageData)
 			unsigned char blue  = rgba[2];
 			unsigned char alpha = rgba[3];
 
-			// int x   = window_left + wx;
 			int idx = m_number_channels * (y * m_width + x);
-			// std::cerr << "IDX: " << idx << "\n";
-			// // if (0 <= x && x < m_spec.width
-			// // && fscanline[wx] != m_transparent_color) {
 			m_imageData[idx]     = red;
 			m_imageData[idx + 1] = green;
 			m_imageData[idx + 2] = blue;
