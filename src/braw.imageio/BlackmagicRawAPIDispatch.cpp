@@ -38,28 +38,28 @@
 #include "BlackmagicRawAPI.h"
 
 #define kBlackmagicRawAPI_Name "libBlackmagicRawAPI.so"
-#define kBlackmagicRawAPI_LibraryFolder	"BlackmagicRawAPI"
+#define kBlackmagicRawAPI_LibraryFolder "BlackmagicRawAPI"
 
 class BmdMutex
 {
 public:
-	inline explicit BmdMutex() { pthread_mutex_init(&m_mutex, NULL); }
-	inline ~BmdMutex() { pthread_mutex_destroy(&m_mutex); }
-	inline void lock() { pthread_mutex_lock(&m_mutex); }
-	inline void unlock() { pthread_mutex_unlock(&m_mutex); }
+    inline explicit BmdMutex() { pthread_mutex_init(&m_mutex, NULL); }
+    inline ~BmdMutex() { pthread_mutex_destroy(&m_mutex); }
+    inline void lock() { pthread_mutex_lock(&m_mutex); }
+    inline void unlock() { pthread_mutex_unlock(&m_mutex); }
 
 private:
-	pthread_mutex_t m_mutex;
+    pthread_mutex_t m_mutex;
 };
 
 class BmdScopedLock
 {
 public:
-	inline explicit BmdScopedLock(BmdMutex& mutex) : m_mutex(mutex) { m_mutex.lock(); }
-	inline ~BmdScopedLock() { m_mutex.unlock(); }
+    inline explicit BmdScopedLock(BmdMutex& mutex) : m_mutex(mutex) { m_mutex.lock(); }
+    inline ~BmdScopedLock() { m_mutex.unlock(); }
 
 private:
-	BmdMutex& m_mutex;
+    BmdMutex& m_mutex;
 };
 
 typedef IBlackmagicRawFactory* (*CreateRawFactoryFunc)(void);
@@ -73,225 +73,225 @@ typedef HRESULT (*SafeArrayAccessDataFunc)(SafeArray*, void**);
 typedef HRESULT (*SafeArrayUnaccessDataFunc)(SafeArray*);
 typedef HRESULT (*SafeArrayDestroyFunc)(SafeArray*);
 
-static CreateRawFactoryFunc					gCreateBlackmagicRawFactoryInstance		= NULL;
-static VariantInitFunc						gVariantInit							= NULL;
-static VariantClearFunc						gVariantClear							= NULL;
-static SafeArrayCreateFunc					gSafeArrayCreate						= NULL;
-static SafeArrayGetVartypeFunc				gSafeArrayGetVartype					= NULL;
-static SafeArrayGetLBoundFunc				gSafeArrayGetLBound						= NULL;
-static SafeArrayGetUBoundFunc				gSafeArrayGetUBound						= NULL;
-static SafeArrayAccessDataFunc				gSafeArrayAccessData					= NULL;
-static SafeArrayUnaccessDataFunc			gSafeArrayUnaccessData					= NULL;
-static SafeArrayDestroyFunc					gSafeArrayDestroy						= NULL;
+static CreateRawFactoryFunc                 gCreateBlackmagicRawFactoryInstance     = NULL;
+static VariantInitFunc                      gVariantInit                            = NULL;
+static VariantClearFunc                     gVariantClear                           = NULL;
+static SafeArrayCreateFunc                  gSafeArrayCreate                        = NULL;
+static SafeArrayGetVartypeFunc              gSafeArrayGetVartype                    = NULL;
+static SafeArrayGetLBoundFunc               gSafeArrayGetLBound                     = NULL;
+static SafeArrayGetUBoundFunc               gSafeArrayGetUBound                     = NULL;
+static SafeArrayAccessDataFunc              gSafeArrayAccessData                    = NULL;
+static SafeArrayUnaccessDataFunc            gSafeArrayUnaccessData                  = NULL;
+static SafeArrayDestroyFunc                 gSafeArrayDestroy                       = NULL;
 
-static BmdMutex								gBlackmagicRawMutex;
+static BmdMutex                             gBlackmagicRawMutex;
 
-static void	InitBlackmagicRawAPI (const char* libraryFilePath)
+static void InitBlackmagicRawAPI (const char* libraryFilePath)
 {
-	void* libraryHandle;
+    void* libraryHandle;
 
-	libraryHandle = dlopen(libraryFilePath, RTLD_NOW|RTLD_GLOBAL);
-	if (!libraryHandle)
-	{
-		fprintf(stderr, "%s\n", dlerror());
-		return;
-	}
+    libraryHandle = dlopen(libraryFilePath, RTLD_NOW|RTLD_GLOBAL);
+    if (!libraryHandle)
+    {
+        fprintf(stderr, "%s\n", dlerror());
+        return;
+    }
 
-	gCreateBlackmagicRawFactoryInstance = (CreateRawFactoryFunc)dlsym(libraryHandle, "CreateBlackmagicRawFactoryInstance");
-	if (!gCreateBlackmagicRawFactoryInstance)
-		fprintf(stderr, "%s\n", dlerror());
-	gVariantInit = (VariantInitFunc)dlsym(libraryHandle, "VariantInit");
-	if (!gVariantInit)
-		fprintf(stderr, "%s\n", dlerror());
-	gVariantClear = (VariantClearFunc)dlsym(libraryHandle, "VariantClear");
-	if (!gVariantClear)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayCreate = (SafeArrayCreateFunc)dlsym(libraryHandle, "SafeArrayCreate");
-	if (!gSafeArrayCreate)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayGetVartype = (SafeArrayGetVartypeFunc)dlsym(libraryHandle, "SafeArrayGetVartype");
-	if (!gSafeArrayGetVartype)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayGetLBound = (SafeArrayGetLBoundFunc)dlsym(libraryHandle, "SafeArrayGetLBound");
-	if (!gSafeArrayGetLBound)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayGetUBound = (SafeArrayGetUBoundFunc)dlsym(libraryHandle, "SafeArrayGetUBound");
-	if (!gSafeArrayGetUBound)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayAccessData = (SafeArrayAccessDataFunc)dlsym(libraryHandle, "SafeArrayAccessData");
-	if (!gSafeArrayAccessData)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayUnaccessData = (SafeArrayUnaccessDataFunc)dlsym(libraryHandle, "SafeArrayUnaccessData");
-	if (!gSafeArrayUnaccessData)
-		fprintf(stderr, "%s\n", dlerror());
-	gSafeArrayDestroy = (SafeArrayDestroyFunc)dlsym(libraryHandle, "SafeArrayDestroy");
-	if (!gSafeArrayDestroy)
-		fprintf(stderr, "%s\n", dlerror());
+    gCreateBlackmagicRawFactoryInstance = (CreateRawFactoryFunc)dlsym(libraryHandle, "CreateBlackmagicRawFactoryInstance");
+    if (!gCreateBlackmagicRawFactoryInstance)
+        fprintf(stderr, "%s\n", dlerror());
+    gVariantInit = (VariantInitFunc)dlsym(libraryHandle, "VariantInit");
+    if (!gVariantInit)
+        fprintf(stderr, "%s\n", dlerror());
+    gVariantClear = (VariantClearFunc)dlsym(libraryHandle, "VariantClear");
+    if (!gVariantClear)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayCreate = (SafeArrayCreateFunc)dlsym(libraryHandle, "SafeArrayCreate");
+    if (!gSafeArrayCreate)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayGetVartype = (SafeArrayGetVartypeFunc)dlsym(libraryHandle, "SafeArrayGetVartype");
+    if (!gSafeArrayGetVartype)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayGetLBound = (SafeArrayGetLBoundFunc)dlsym(libraryHandle, "SafeArrayGetLBound");
+    if (!gSafeArrayGetLBound)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayGetUBound = (SafeArrayGetUBoundFunc)dlsym(libraryHandle, "SafeArrayGetUBound");
+    if (!gSafeArrayGetUBound)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayAccessData = (SafeArrayAccessDataFunc)dlsym(libraryHandle, "SafeArrayAccessData");
+    if (!gSafeArrayAccessData)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayUnaccessData = (SafeArrayUnaccessDataFunc)dlsym(libraryHandle, "SafeArrayUnaccessData");
+    if (!gSafeArrayUnaccessData)
+        fprintf(stderr, "%s\n", dlerror());
+    gSafeArrayDestroy = (SafeArrayDestroyFunc)dlsym(libraryHandle, "SafeArrayDestroy");
+    if (!gSafeArrayDestroy)
+        fprintf(stderr, "%s\n", dlerror());
 }
 
 IBlackmagicRawFactory* CreateBlackmagicRawFactoryInstance (void)
 {
-	IBlackmagicRawFactory* factory = NULL;
+    IBlackmagicRawFactory* factory = NULL;
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-	{
-		factory = CreateBlackmagicRawFactoryInstanceFromExeRelativePath(kBlackmagicRawAPI_LibraryFolder);
-		if (factory != NULL)
-			return factory;
-	}
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+    {
+        factory = CreateBlackmagicRawFactoryInstanceFromExeRelativePath(kBlackmagicRawAPI_LibraryFolder);
+        if (factory != NULL)
+            return factory;
+    }
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-	{
-		factory = CreateBlackmagicRawFactoryInstanceFromExeRelativePath(NULL);
-		if (factory != NULL)
-			return factory;
-	}
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+    {
+        factory = CreateBlackmagicRawFactoryInstanceFromExeRelativePath(NULL);
+        if (factory != NULL)
+            return factory;
+    }
 
-	BmdScopedLock lock(gBlackmagicRawMutex);
+    BmdScopedLock lock(gBlackmagicRawMutex);
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		InitBlackmagicRawAPI(kBlackmagicRawAPI_Name);
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        InitBlackmagicRawAPI(kBlackmagicRawAPI_Name);
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return NULL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return NULL;
 
-	return gCreateBlackmagicRawFactoryInstance();
+    return gCreateBlackmagicRawFactoryInstance();
 }
 
 IBlackmagicRawFactory* CreateBlackmagicRawFactoryInstanceFromPath (const char* loadPath)
 {
-	BmdScopedLock lock(gBlackmagicRawMutex);
+    BmdScopedLock lock(gBlackmagicRawMutex);
 
-	// Load from desired folder
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-	{
-		std::string libraryFilePath(loadPath);
-		if ((! libraryFilePath.empty()) && (libraryFilePath.back() != '/'))
-			libraryFilePath += '/';
-		libraryFilePath += kBlackmagicRawAPI_Name;
+    // Load from desired folder
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+    {
+        std::string libraryFilePath(loadPath);
+        if ((! libraryFilePath.empty()) && (libraryFilePath.back() != '/'))
+            libraryFilePath += '/';
+        libraryFilePath += kBlackmagicRawAPI_Name;
 
-		InitBlackmagicRawAPI(libraryFilePath.c_str());
-	}
+        InitBlackmagicRawAPI(libraryFilePath.c_str());
+    }
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return NULL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return NULL;
 
-	return gCreateBlackmagicRawFactoryInstance();
+    return gCreateBlackmagicRawFactoryInstance();
 }
 
 IBlackmagicRawFactory* CreateBlackmagicRawFactoryInstanceFromExeRelativePath (const char* loadPath)
 {
-	BmdScopedLock lock(gBlackmagicRawMutex);
+    BmdScopedLock lock(gBlackmagicRawMutex);
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-	{
-		char path[PATH_MAX + 1];
-		ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
-		if (count == 0)
-			return NULL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+    {
+        char path[PATH_MAX + 1];
+        ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
+        if (count == 0)
+            return NULL;
 
-		path[count] = '\0';
+        path[count] = '\0';
 
-		char resolvedPath[PATH_MAX + 1];
-		char* absolutePathName = realpath(path, resolvedPath);
-		if (absolutePathName == NULL)
-			return NULL;
+        char resolvedPath[PATH_MAX + 1];
+        char* absolutePathName = realpath(path, resolvedPath);
+        if (absolutePathName == NULL)
+            return NULL;
 
-		char* absoluteDirectory = dirname(absolutePathName);
+        char* absoluteDirectory = dirname(absolutePathName);
 
-		std::string libraryFilePath(absoluteDirectory);
+        std::string libraryFilePath(absoluteDirectory);
 
-		if (loadPath != NULL)
-		{
-			std::string loadPathString(loadPath);
+        if (loadPath != NULL)
+        {
+            std::string loadPathString(loadPath);
 
-			if ((! loadPathString.empty()) && (loadPathString.front() != '/'))
-				libraryFilePath += '/';
+            if ((! loadPathString.empty()) && (loadPathString.front() != '/'))
+                libraryFilePath += '/';
 
-			libraryFilePath += loadPathString;
-		}
+            libraryFilePath += loadPathString;
+        }
 
-		if ((! libraryFilePath.empty()) && (libraryFilePath.back() != '/'))
-			libraryFilePath += '/';
-		libraryFilePath += kBlackmagicRawAPI_Name;
+        if ((! libraryFilePath.empty()) && (libraryFilePath.back() != '/'))
+            libraryFilePath += '/';
+        libraryFilePath += kBlackmagicRawAPI_Name;
 
-		InitBlackmagicRawAPI(libraryFilePath.c_str());
-	}
+        InitBlackmagicRawAPI(libraryFilePath.c_str());
+    }
 
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return NULL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return NULL;
 
-	return gCreateBlackmagicRawFactoryInstance();
+    return gCreateBlackmagicRawFactoryInstance();
 }
 
 HRESULT VariantInit (Variant* variant)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gVariantInit(variant);
+    return gVariantInit(variant);
 }
 
 HRESULT VariantClear (Variant* variant)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gVariantClear(variant);
+    return gVariantClear(variant);
 }
 
 SafeArray* SafeArrayCreate (BlackmagicRawVariantType variantType, uint32_t dimensions, SafeArrayBound* safeArrayBound)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return NULL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return NULL;
 
-	return gSafeArrayCreate(variantType, dimensions, safeArrayBound);
+    return gSafeArrayCreate(variantType, dimensions, safeArrayBound);
 }
 
 HRESULT SafeArrayGetVartype (SafeArray* safeArray, BlackmagicRawVariantType* variantType)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayGetVartype(safeArray, variantType);
+    return gSafeArrayGetVartype(safeArray, variantType);
 }
 
 HRESULT SafeArrayGetLBound (SafeArray* safeArray, uint32_t dimensions, long* lBound)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayGetLBound(safeArray, dimensions, lBound);
+    return gSafeArrayGetLBound(safeArray, dimensions, lBound);
 }
 
 HRESULT SafeArrayGetUBound (SafeArray* safeArray, uint32_t dimensions, long* uBound)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayGetUBound(safeArray, dimensions, uBound);
+    return gSafeArrayGetUBound(safeArray, dimensions, uBound);
 }
 
 HRESULT SafeArrayAccessData (SafeArray* safeArray, void** outData)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayAccessData(safeArray, outData);
+    return gSafeArrayAccessData(safeArray, outData);
 }
 
 HRESULT SafeArrayUnaccessData (SafeArray* safeArray)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayUnaccessData(safeArray);
+    return gSafeArrayUnaccessData(safeArray);
 }
 
 HRESULT SafeArrayDestroy (SafeArray* safeArray)
 {
-	if (gCreateBlackmagicRawFactoryInstance == NULL)
-		return E_FAIL;
+    if (gCreateBlackmagicRawFactoryInstance == NULL)
+        return E_FAIL;
 
-	return gSafeArrayDestroy(safeArray);
+    return gSafeArrayDestroy(safeArray);
 }
