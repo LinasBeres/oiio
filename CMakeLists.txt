@@ -51,8 +51,6 @@ if (CMAKE_USE_FOLDERS)
     set_property (GLOBAL PROPERTY USE_FOLDERS ON)
 endif ()
 
-find_package(fmt 5.3.0 REQUIRED)
-
 include (GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH
