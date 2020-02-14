@@ -295,7 +295,7 @@ catalog_builtin_plugins()
 
     DECLAREPLUG (bmp);
 #ifdef USE_BRAW
-		DECLAREPLUG_RO (braw);
+    DECLAREPLUG_RO (braw);
 #endif
     DECLAREPLUG_RO (cineon);
     DECLAREPLUG_RO (dds);
