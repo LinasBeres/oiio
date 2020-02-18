@@ -234,8 +234,8 @@ catalog_plugin(const std::string& format_name,
         extern const char* name##_imageio_library_version();
 
 PLUGENTRY(bmp);
-PLUGENTRY(braw);
-PLUGENTRY_RO(cineon);
+PLUGENTRY_RO(braw);
+PLUGENTRY(cineon);
 PLUGENTRY(dds);
 PLUGENTRY_RO(dicom);
 PLUGENTRY(dpx);
