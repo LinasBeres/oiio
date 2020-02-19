@@ -1,17 +1,6 @@
-diff -ruN '--exclude=.git' oiio-2.0.10/CMakeLists.txt oiio/CMakeLists.txt
---- oiio-2.0.10/CMakeLists.txt	2020-02-14 10:26:04.048123563 +0000
-+++ oiio/CMakeLists.txt	2020-02-14 16:28:29.777910044 +0000
-@@ -95,6 +95,7 @@
- option (USE_GIF "Use GIF if found" ON)
- option (USE_PTEX "Use PTex if found" ON)
- option (USE_WEBP "Use WebP if found" ON)
-+option (USE_BRAW "Use braw if found" ON)
- option (USE_LIBRAW "Use LibRaw if found" ON)
- set (LIBRAW_PATH "" CACHE STRING "Custom LibRaw path")
- option (OIIO_THREAD_ALLOW_DCLP "OIIO threads may use DCLP for speed" ON)
 diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/BlackmagicRawAPIDispatch.cpp oiio/src/braw.imageio/BlackmagicRawAPIDispatch.cpp
 --- oiio-2.0.10/src/braw.imageio/BlackmagicRawAPIDispatch.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ oiio/src/braw.imageio/BlackmagicRawAPIDispatch.cpp	2020-02-14 16:28:29.779910040 +0000
++++ oiio/src/braw.imageio/BlackmagicRawAPIDispatch.cpp	2020-02-18 14:33:41.091257463 +0000
 @@ -0,0 +1,297 @@
 +/* -LICENSE-START-
 +** Copyright (c) 2018 Blackmagic Design
@@ -312,7 +301,7 @@ diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/BlackmagicRawAPIDispatch
 +}
 diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/brawinput.cpp oiio/src/braw.imageio/brawinput.cpp
 --- oiio-2.0.10/src/braw.imageio/brawinput.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ oiio/src/braw.imageio/brawinput.cpp	2020-02-14 16:28:29.780910038 +0000
++++ oiio/src/braw.imageio/brawinput.cpp	2020-02-18 14:33:41.091257463 +0000
 @@ -0,0 +1,558 @@
 +/*
 + Created by Linas Beresna.
@@ -874,7 +863,7 @@ diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/brawinput.cpp oiio/src/b
 +    OIIO_PLUGIN_NAMESPACE_END
 diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/CMakeLists.txt oiio/src/braw.imageio/CMakeLists.txt
 --- oiio-2.0.10/src/braw.imageio/CMakeLists.txt	1970-01-01 01:00:00.000000000 +0100
-+++ oiio/src/braw.imageio/CMakeLists.txt	2020-02-14 16:28:29.779910040 +0000
++++ oiio/src/braw.imageio/CMakeLists.txt	2020-02-18 14:33:41.091257463 +0000
 @@ -0,0 +1,10 @@
 +if (USE_BRAW AND BRAW_FOUND)
 +    message (STATUS "Building braw plugin")
@@ -887,8 +876,8 @@ diff -ruN '--exclude=.git' oiio-2.0.10/src/braw.imageio/CMakeLists.txt oiio/src/
 +endif ()
 +
 diff -ruN '--exclude=.git' oiio-2.0.10/src/cmake/externalpackages.cmake oiio/src/cmake/externalpackages.cmake
---- oiio-2.0.10/src/cmake/externalpackages.cmake	2020-02-14 10:26:04.049123562 +0000
-+++ oiio/src/cmake/externalpackages.cmake	2020-02-14 16:28:29.781910036 +0000
+--- oiio-2.0.10/src/cmake/externalpackages.cmake	2020-02-18 12:09:43.621572779 +0000
++++ oiio/src/cmake/externalpackages.cmake	2020-02-18 14:33:41.092257462 +0000
 @@ -4,6 +4,7 @@
  # When not in VERBOSE mode, try to make things as quiet as possible
  if (NOT VERBOSE)
@@ -932,7 +921,7 @@ diff -ruN '--exclude=.git' oiio-2.0.10/src/cmake/externalpackages.cmake oiio/src
  if (USE_OPENGL)
 diff -ruN '--exclude=.git' oiio-2.0.10/src/cmake/modules/Findbraw.cmake oiio/src/cmake/modules/Findbraw.cmake
 --- oiio-2.0.10/src/cmake/modules/Findbraw.cmake	1970-01-01 01:00:00.000000000 +0100
-+++ oiio/src/cmake/modules/Findbraw.cmake	2020-02-14 16:28:29.841909919 +0000
++++ oiio/src/cmake/modules/Findbraw.cmake	2020-02-18 14:33:41.107257447 +0000
 @@ -0,0 +1,54 @@
 +# - Find braw
 +# Find the LibRaw library <http://www.libraw.org>
@@ -989,18 +978,16 @@ diff -ruN '--exclude=.git' oiio-2.0.10/src/cmake/modules/Findbraw.cmake oiio/src
 +    BRAW_DEFINITIONS
 +    )
 diff -ruN '--exclude=.git' oiio-2.0.10/src/libOpenImageIO/imageioplugin.cpp oiio/src/libOpenImageIO/imageioplugin.cpp
---- oiio-2.0.10/src/libOpenImageIO/imageioplugin.cpp	2020-02-14 10:26:04.050123561 +0000
-+++ oiio/src/libOpenImageIO/imageioplugin.cpp	2020-02-14 16:28:29.907909790 +0000
-@@ -234,7 +234,8 @@
+--- oiio-2.0.10/src/libOpenImageIO/imageioplugin.cpp	2020-02-18 12:09:43.622572778 +0000
++++ oiio/src/libOpenImageIO/imageioplugin.cpp	2020-02-18 14:33:41.156257401 +0000
+@@ -234,6 +234,7 @@
          extern const char* name##_imageio_library_version();
  
  PLUGENTRY(bmp);
--PLUGENTRY(cineon);
-+PLUGENTRY(braw);
-+PLUGENTRY_RO(cineon);
++PLUGENTRY_RO(braw);
+ PLUGENTRY(cineon);
  PLUGENTRY(dds);
  PLUGENTRY_RO(dicom);
- PLUGENTRY(dpx);
 @@ -293,6 +294,9 @@
              name##_imageio_library_version())
  
