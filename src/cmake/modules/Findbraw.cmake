@@ -5,10 +5,14 @@
 #  BRAW_LIBRARIES, the libraries needed to use braw
 #  BRAW_DEFINITIONS, the definitions needed to use braw
 #
-# Copyright (c) 2020, Linas Beresna <beres dot linas at gmail dot com>
+# TODO Change this to be more in line with DNEG
+# Copyright (c) 2020, libe at dneg dot come
 #
 # Redistribution and use is allowed according to the terms of the BSD license.
 # For details see the accompanying COPYING-CMAKE-SCRIPTS file.
+
+# TODO In general I am sure this cmake file can be tidied up and more information about the library could
+# be obtained, such as versioning info and so forth.
 
 FIND_PACKAGE(PkgConfig)
 
