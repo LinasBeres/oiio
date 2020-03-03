@@ -335,9 +335,9 @@ BrawInput::getMetadata(ImageSpec &spec)
             default:
                 break;
 
-            spec.attribute(key, str_value);
         }
 
+        spec.attribute(key, str_value);
         VariantClear(&value);
 
         clipMetadataIterator->Next();
