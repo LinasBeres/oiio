@@ -244,14 +244,12 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
     }
 
     m_spec = ImageSpec((int)m_width, (int)m_height, /* RGBF32 */ 3, TypeDesc::FLOAT);
-    newspec = m_spec;
     newspec.attribute("oiio:ColorSpace", "linear");
-    newspec.attribute("oiio:Movie", true);
-
     m_nsubimages = m_frame_count;
+    m_spec.attribute("oiio:Movie", true);
     fill_metadata(m_spec);
 
-
+    newspec = m_spec;
     return true;
 }
 
