@@ -241,14 +241,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
             if (result == S_OK) {
                 m_imageData.resize(width * height * channels * sizeof(PixelType));
-
-                PixelType* src = (PixelType*) imageData;
-                PixelType* dst = (PixelType*) m_imageData.data();
-
-                for (uint32_t y = 0; y < height; y++)
-                    for (uint32_t x = 0; x < width; x++)
-                        for (uint8_t c = 0; c < channels; ++c)
-                            *dst++ = *src++;
+                memcpy(m_imageData.data(), imageData, m_imageData.size());
             }
 
             job->Release();
