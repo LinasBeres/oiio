@@ -91,6 +91,94 @@ static const BlackmagicRawResourceFormat s_resourceFormat = blackmagicRawResourc
 static const uint8_t s_resourceChannels = 3;
 typedef float PixelType;
 
+struct Attribute {
+	const char * name;
+	const char * type;
+	uint32_t id;
+};
+
+Attribute s_clipAttributes[] = {
+	{"ColorScienceGen", "u16", blackmagicRawClipProcessingAttributeColorScienceGen},
+	{"Gamma", "string", blackmagicRawClipProcessingAttributeGamma},
+	{"Gamut", "string", blackmagicRawClipProcessingAttributeGamut},
+	{"ToneCurveContrast", "float", blackmagicRawClipProcessingAttributeToneCurveContrast},
+	{"ToneCurveSaturation", "float", blackmagicRawClipProcessingAttributeToneCurveSaturation},
+	{"ToneCurveMidpoint", "float", blackmagicRawClipProcessingAttributeToneCurveMidpoint},
+	{"ToneCurveHighlights", "float", blackmagicRawClipProcessingAttributeToneCurveHighlights},
+	{"ToneCurveShadows", "float", blackmagicRawClipProcessingAttributeToneCurveShadows},
+	{"ToneCurveVideoBlackLevel", "u16", blackmagicRawClipProcessingAttributeToneCurveVideoBlackLevel},
+	{"ToneCurveBlackLevel", "float", blackmagicRawClipProcessingAttributeToneCurveBlackLevel},
+	{"ToneCurveWhiteLevel", "float", blackmagicRawClipProcessingAttributeToneCurveWhiteLevel},
+	{"HighlightRecovery", "u16", blackmagicRawClipProcessingAttributeHighlightRecovery},
+	{"AnalogGain", "float", blackmagicRawClipProcessingAttributeAnalogGain},
+	{"Post3DLUTMode", "string", blackmagicRawClipProcessingAttributePost3DLUTMode},
+	{"EmbeddedPost3DLUTName", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTName},
+	{"EmbeddedPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTTitle},
+	{"EmbeddedPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTSize},
+	{"EmbeddedPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTData},
+	{"SidecarPost3DLUTName", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTName},
+	{"SidecarPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTTitle},
+	{"SidecarPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeSidecarPost3DLUTSize},
+	{"SidecarPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeSidecarPost3DLUTData},
+};
+
+// These require access to the decoded frame and can change on a frame-by-frame basis
+// May be worth checking if we can update the ImageSpec on each ReadFrame
+Attribute s_frameAttributes[] = {
+	{"WhiteBalanceKelvin", "u32", blackmagicRawFrameProcessingAttributeWhiteBalanceKelvin},
+	{"WhiteBalanceTint", "s16", blackmagicRawFrameProcessingAttributeWhiteBalanceTint},
+	{"Exposure", "float", blackmagicRawFrameProcessingAttributeExposure},
+	{"ISO", "u16", blackmagicRawFrameProcessingAttributeISO}
+};
+
+std::string VariantToString(const Variant& value)
+{
+    BlackmagicRawVariantType variantType = value.vt;
+    switch (variantType)
+    {
+        case blackmagicRawVariantTypeS16:
+            {
+                short s16 = value.iVal;
+                return std::to_string(s16);
+            }
+            break;
+        case blackmagicRawVariantTypeU16:
+            {
+                unsigned short u16 = value.uiVal;
+                return std::to_string(u16);
+            }
+            break;
+        case blackmagicRawVariantTypeS32:
+            {
+                int i32 = value.intVal;
+                return std::to_string(i32);
+            }
+            break;
+        case blackmagicRawVariantTypeU32:
+            {
+                unsigned int u32 = value.uintVal;
+                return std::to_string(u32);
+            }
+            break;
+        case blackmagicRawVariantTypeFloat32:
+            {
+                float f32 = value.fltVal;
+                return std::to_string(f32);
+            }
+            break;
+        case blackmagicRawVariantTypeString:
+            {
+                return value.bstrVal;
+            }
+            break;
+        default:
+            break;
+    }
+
+    return "";
+}
+
+
 ////////////////////////////////////////////////////////////////////////
 /////// Callback class to get data from BlackmagicRAWAPI ///////////////
 ////////////////////////////////////////////////////////////////////////
@@ -242,7 +330,6 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
         return false;
     }
 
-    newspec.attribute("oiio:ColorSpace", "linear");
     m_nsubimages = m_frame_count;
     m_spec = ImageSpec((int)m_width, (int)m_height, s_resourceChannels, BaseTypeFromC<PixelType>::value);
     m_spec.attribute("oiio:Movie", true);
@@ -255,12 +342,13 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
 bool
 BrawInput::fill_metadata(ImageSpec &spec)
 {
-    // Metadata
-    IBlackmagicRawMetadataIterator* clipMetadataIterator = nullptr;
     const char *key = nullptr;
     Variant value;
 
     spec.attribute("Exif:Make", "Blackmagic Design");
+
+    // Clip Metadata
+    IBlackmagicRawMetadataIterator* clipMetadataIterator = nullptr;
 
     HRESULT result = m_clip->GetMetadataIterator(&clipMetadataIterator);
     if (result != S_OK) {
@@ -269,60 +357,15 @@ BrawInput::fill_metadata(ImageSpec &spec)
     }
 
     while (SUCCEEDED(clipMetadataIterator->GetKey(&key))) {
-        std::string str_value = "";
         VariantInit(&value);
 
         result = clipMetadataIterator->GetData(&value);
-        if (result != S_OK)
-        {
+        if (result != S_OK) {
             errorf("Failed to get data from IBlackmagicRawMetadataIterator!");
             break;
         }
 
-        BlackmagicRawVariantType variantType = value.vt;
-        switch (variantType)
-        {
-            case blackmagicRawVariantTypeS16:
-                {
-                    short s16 = value.iVal;
-                    str_value = std::to_string(s16);
-                }
-                break;
-            case blackmagicRawVariantTypeU16:
-                {
-                    unsigned short u16 = value.uiVal;
-                    str_value = std::to_string(u16);
-                }
-                break;
-            case blackmagicRawVariantTypeS32:
-                {
-                    int i32 = value.intVal;
-                    str_value = std::to_string(i32);
-                }
-                break;
-            case blackmagicRawVariantTypeU32:
-                {
-                    unsigned int u32 = value.uintVal;
-                    str_value = std::to_string(u32);
-                }
-                break;
-            case blackmagicRawVariantTypeFloat32:
-                {
-                    float f32 = value.fltVal;
-                    str_value = std::to_string(f32);
-                }
-                break;
-            case blackmagicRawVariantTypeString:
-                {
-                    str_value = value.bstrVal;
-                }
-                break;
-            default:
-                break;
-
-        }
-
-        spec.attribute(key, str_value);
+        spec.attribute(key, VariantToString(value));
         VariantClear(&value);
 
         clipMetadataIterator->Next();
@@ -330,6 +373,37 @@ BrawInput::fill_metadata(ImageSpec &spec)
 
     if(clipMetadataIterator != nullptr)
         clipMetadataIterator->Release();
+
+    // Clip Processing Metadata
+    IBlackmagicRawClipProcessingAttributes* clipProcessingAttributes = nullptr;
+
+    result = m_clip->QueryInterface(IID_IBlackmagicRawClipProcessingAttributes, (void**)&clipProcessingAttributes);
+    if (result != S_OK) {
+        errorf("Failed to get clip processing attributes\n");
+        return false;
+    }
+
+    std::string gamut;
+    std::string gamma;
+    for (Attribute& attrib : s_clipAttributes) {
+        VariantInit(&value);
+
+        clipProcessingAttributes->GetClipAttribute(attrib.id, &value);
+        std::string keyStr = "braw_clip_processing_attrib/" + std::string(attrib.name);
+        std::string valueStr = VariantToString(value);
+        spec.attribute(keyStr, valueStr);
+
+        // Custom attributes mapping
+        if (attrib.id == blackmagicRawClipProcessingAttributeGamut)
+            gamut = valueStr;
+        else if (attrib.id == blackmagicRawClipProcessingAttributeGamma)
+            gamma = valueStr;
+
+        VariantClear(&value);
+    }
+
+    m_spec.attribute("oiio:ColorSpace", gamut + "." + gamma);
+
     return true;
 }
 
