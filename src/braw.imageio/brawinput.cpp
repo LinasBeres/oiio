@@ -1,6 +1,6 @@
 /*
    Created by Linas Beresna.
-   */
+*/
 
 #include "BlackmagicRawAPI.h"
 
@@ -40,8 +40,11 @@ class BrawInput final : public ImageInput {
         virtual bool seek_subimage(int subimage, int miplevel) override;
         virtual bool read_native_scanline(int subimage, int miplevel, int y, int z,
                 void* data) override;
-        bool readFrame(uint64_t frameIndex);
-        bool getMetadata(ImageSpec &spec);
+
+    private:
+        void init();
+        bool read_frame(uint64_t frameIndex);
+        bool fill_metadata(ImageSpec &spec);
 
     private:
         std::unique_ptr<CameraCodecCallback> m_callback;
@@ -55,21 +58,6 @@ class BrawInput final : public ImageInput {
         int m_subimage;
         bool m_read_frame;
         int64_t m_nsubimages;
-
-        /// Reset everything to initial state
-        void init()
-        {
-            m_callback        = nullptr;
-            m_factory         = nullptr;
-            m_codec           = nullptr;
-            m_clip            = nullptr;
-            m_width           = 0;
-            m_height          = 0;
-            m_frame_count     = 0;
-            m_subimage        = 0;
-            m_read_frame      = false;
-        }
-
 };
 
 // Obligatory material to make this a recognizeable imageio plugin:
@@ -261,14 +249,14 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
     newspec.attribute("oiio:Movie", true);
 
     m_nsubimages = m_frame_count;
+    fill_metadata(m_spec);
 
-    getMetadata(newspec);
 
     return true;
 }
 
 bool
-BrawInput::getMetadata(ImageSpec &spec)
+BrawInput::fill_metadata(ImageSpec &spec)
 {
     // Metadata
     IBlackmagicRawMetadataIterator* clipMetadataIterator = nullptr;
@@ -348,6 +336,21 @@ BrawInput::getMetadata(ImageSpec &spec)
     return true;
 }
 
+void
+BrawInput::init()
+{
+    // Reset everything to initial state
+    m_callback        = nullptr;
+    m_factory         = nullptr;
+    m_codec           = nullptr;
+    m_clip            = nullptr;
+    m_width           = 0;
+    m_height          = 0;
+    m_frame_count     = 0;
+    m_subimage        = 0;
+    m_read_frame      = false;
+}
+
 bool
 BrawInput::close()
 {
@@ -386,7 +389,7 @@ BrawInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     if (!seek_subimage(subimage, miplevel))
         return false;
     if(!m_read_frame) {
-        if(!readFrame(m_subimage))
+        if(!read_frame(m_subimage))
             return false;
     }
 
@@ -400,7 +403,7 @@ BrawInput::read_native_scanline(int subimage, int miplevel, int y, int z,
 }
 
 bool
-BrawInput::readFrame(uint64_t frameIndex)
+BrawInput::read_frame(uint64_t frameIndex)
 {
     HRESULT result = S_OK;
     IBlackmagicRawJob* readJob = nullptr;
