@@ -81,9 +81,20 @@ OIIO_EXPORT const char* braw_input_extensions[] = { "braw", nullptr };
 
 OIIO_PLUGIN_EXPORTS_END
 
+
+////////////////////////////////////////////////////////////////////////
+////////// Settings for debayering and post processing /////////////////
+////////////////////////////////////////////////////////////////////////
+
+// Manual settings for output pixel format
+static const BlackmagicRawResourceFormat s_resourceFormat = blackmagicRawResourceFormatRGBF32;
+static const uint8_t s_resourceChannels = 3;
+typedef float PixelType;
+
 ////////////////////////////////////////////////////////////////////////
 /////// Callback class to get data from BlackmagicRAWAPI ///////////////
 ////////////////////////////////////////////////////////////////////////
+
 class CameraCodecCallback : public IBlackmagicRawCallback
 {
     public:
@@ -96,14 +107,14 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
         IBlackmagicRawFrame* GetFrame() { return m_frame; }
 
-        std::vector<float> GetImageData() { return m_imageData; }
+        uint8_t* GetData() { return m_imageData.data(); }
 
         virtual void ReadComplete(IBlackmagicRawJob* readJob, HRESULT result, IBlackmagicRawFrame* frame)
         {
             IBlackmagicRawJob* decodeAndProcessJob = nullptr;
 
             if(result == S_OK)
-                result = frame->SetResourceFormat(blackmagicRawResourceFormatRGBF32);
+                result = frame->SetResourceFormat(s_resourceFormat);
 
             if(result == S_OK) {
                 m_frame = frame;
@@ -126,10 +137,10 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
         virtual void ProcessComplete(IBlackmagicRawJob* job, HRESULT result, IBlackmagicRawProcessedImage* processedImage)
         {
-            uint32_t width = 0, height = 0;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            uint8_t channels = s_resourceChannels;
             void* imageData = nullptr;
-
-            m_imageData.clear();
 
             if (result == S_OK)
                 result = processedImage->GetWidth(&width);
@@ -141,27 +152,15 @@ class CameraCodecCallback : public IBlackmagicRawCallback
                 result = processedImage->GetResource(&imageData);
 
             if (result == S_OK) {
-                m_imageData.resize(width * height * 3);
-                std::fill(m_imageData.begin(), m_imageData.end(), 0x00);
+                m_imageData.resize(width * height * channels * sizeof(PixelType));
 
-                float* rgb = (float*)imageData;
+                PixelType* src = (PixelType*) imageData;
+                PixelType* dst = (PixelType*) m_imageData.data();
+
                 for (uint32_t y = 0; y < height; y++)
-                {
                     for (uint32_t x = 0; x < width; x++)
-                    {
-                        float red   = rgb[0];
-                        float green = rgb[1];
-                        float blue  = rgb[2];
-
-                        uint32_t idx = 3 * (y * width + x);
-                        m_imageData[idx]     = red;
-                        m_imageData[idx + 1] = green;
-                        m_imageData[idx + 2] = blue;
-
-                        rgb += 3; // next 3
-
-                    }
-                }
+                        for (uint8_t c = 0; c < channels; ++c)
+                            *dst++ = *src++;
             }
 
             job->Release();
@@ -189,7 +188,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
             return 0;
         }
     private:
-        std::vector<float> m_imageData;
+        std::vector<uint8_t> m_imageData;
         IBlackmagicRawFrame* m_frame = nullptr;
 };
 
@@ -243,9 +242,9 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
         return false;
     }
 
-    m_spec = ImageSpec((int)m_width, (int)m_height, /* RGBF32 */ 3, TypeDesc::FLOAT);
     newspec.attribute("oiio:ColorSpace", "linear");
     m_nsubimages = m_frame_count;
+    m_spec = ImageSpec((int)m_width, (int)m_height, s_resourceChannels, BaseTypeFromC<PixelType>::value);
     m_spec.attribute("oiio:Movie", true);
     fill_metadata(m_spec);
 
@@ -394,8 +393,9 @@ BrawInput::read_native_scanline(int subimage, int miplevel, int y, int z,
     if (y < 0 || y >= m_spec.height)  // out of range scanline
         return false;
 
-    memcpy(data, &m_callback->GetImageData()[y * m_spec.width * m_spec.nchannels],
-            m_spec.width * m_spec.nchannels * sizeof(float));
+    size_t count = m_spec.width * m_spec.nchannels * sizeof(PixelType);
+    uint8_t* src = &m_callback->GetData()[y * count];
+    memcpy(data, (void*) src, count);
 
     return true;
 }
