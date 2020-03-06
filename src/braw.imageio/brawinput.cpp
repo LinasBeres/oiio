@@ -192,16 +192,17 @@ class CameraCodecCallback : public IBlackmagicRawCallback
         explicit CameraCodecCallback() : metadata_mode(false) {}
         virtual ~CameraCodecCallback()
         {
-                    m_imageData.clear();
             if(m_frame != nullptr)
                 m_frame->Release();
         }
 
-                void toggleMetadataMode() { metadata_mode = !metadata_mode; }
+        void toggleMetadataMode() { metadata_mode = !metadata_mode; }
 
         IBlackmagicRawFrame* GetFrame() { return m_frame; }
 
         uint8_t* GetData() { return m_imageData.data(); }
+
+        void setClipAttributes(IBlackmagicRawClipProcessingAttributes* attributes) { m_clip_attributes = attributes; }
 
         virtual void ReadComplete(IBlackmagicRawJob* readJob, HRESULT result, IBlackmagicRawFrame* frame)
         {
@@ -217,7 +218,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
             if(!metadata_mode) {
                 if (result == S_OK)
-                        result = frame->CreateJobDecodeAndProcessFrame(nullptr, nullptr, &decodeAndProcessJob);
+                        result = frame->CreateJobDecodeAndProcessFrame(m_clip_attributes, nullptr, &decodeAndProcessJob);
 
                 if (result == S_OK)
                         result = decodeAndProcessJob->Submit();
@@ -234,6 +235,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
         virtual void ProcessComplete(IBlackmagicRawJob* job, HRESULT result, IBlackmagicRawProcessedImage* processedImage)
         {
             if(!metadata_mode) {
+                uint32_t byteSize = 0;
                 uint32_t width = 0;
                 uint32_t height = 0;
                 uint8_t channels = s_resourceChannels;
@@ -287,6 +289,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
     private:
         std::vector<uint8_t> m_imageData;
         IBlackmagicRawFrame* m_frame = nullptr;
+        IBlackmagicRawClipProcessingAttributes* m_clip_attributes = nullptr;
         bool metadata_mode;
 };
 
@@ -358,6 +361,14 @@ BrawInput::open(const std::string& name, ImageSpec& newspec,
     m_callback->toggleMetadataMode();
 
     // User defined colorspace (Gamma & Gamut)
+    IBlackmagicRawClipProcessingAttributes* clipProcessingAttributes = nullptr;
+
+    result = m_clip->QueryInterface(IID_IBlackmagicRawClipProcessingAttributes, (void**)&clipProcessingAttributes);
+    if (result != S_OK) {
+        errorf("Failed to get clip processing attributes\n");
+        return false;
+    }
+
     IBlackmagicRawConstants* constant;
     result = m_codec->QueryInterface(IID_IBlackmagicRawConstants, (void**)&constant);
     if (result != S_OK) {
@@ -368,6 +379,8 @@ BrawInput::open(const std::string& name, ImageSpec& newspec,
     const char* cameraType;
     m_clip->GetCameraType(&cameraType);
 
+    Variant gamma_variant;
+    Variant gamut_variant;
     std::string gamut = config.get_string_attribute("braw:gamut", "ACES APO");
     std::string gamma = config.get_string_attribute("braw:gamma", "linear");
     std::vector<Variant> values(56);
@@ -396,6 +409,16 @@ BrawInput::open(const std::string& name, ImageSpec& newspec,
     gamut = return_value(gamut);
     gamut = gamut == "" ? "ACES AP0" : gamut;
 
+    VariantInit(&gamut_variant);
+    gamut_variant.vt = blackmagicRawVariantTypeString;
+    gamut_variant.bstrVal = gamut.c_str();
+    result = clipProcessingAttributes->SetClipAttribute(blackmagicRawClipProcessingAttributeGamut, &gamut_variant);
+
+    if (result != S_OK) {
+       errorf("Failed to set gamut attribute");
+       return false;
+    }
+
     // Gamma
     result = constant->GetClipProcessingAttributeList(
             cameraType,
@@ -410,6 +433,18 @@ BrawInput::open(const std::string& name, ImageSpec& newspec,
 
     gamma = return_value(gamma);
     gamma = gamma == "" ? "Linear" : gamma;
+
+    VariantInit(&gamma_variant);
+    gamma_variant.vt = blackmagicRawVariantTypeString;
+    gamma_variant.bstrVal = gamma.c_str();
+    result = clipProcessingAttributes->SetClipAttribute(blackmagicRawClipProcessingAttributeGamma, &gamma_variant);
+
+    if (result != S_OK) {
+        errorf("Failed to set gamma attribute");
+        return false;
+    }
+
+    m_callback->setClipAttributes(clipProcessingAttributes);
 
     m_spec.attribute("oiio:ColorSpace", gamut + "." + gamma);
 
@@ -537,7 +572,7 @@ BrawInput::fill_metadata(ImageSpec &spec)
         VariantInit(&value);
 
         frameProcessingAttributes->GetFrameAttribute(attrib.id, &value);
-        std::string keyStr = "braw_frame_processing_attrib/" + std::string(attrib.name);
+        std::string keyStr = "braw_frame_1_processing_attrib/" + std::string(attrib.name);
         std::string valueStr = VariantToString(value);
         spec.attribute(keyStr, valueStr);
 
