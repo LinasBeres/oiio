@@ -9,6 +9,7 @@
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/strutil.h>
 #include <OpenImageIO/typedesc.h>
+#include <OpenImageIO/thread.h>
 
 #include <boost/filesystem.hpp>
 namespace filesystem = boost::filesystem;
@@ -27,6 +28,7 @@ class BrawInput final : public ImageInput {
         virtual ~BrawInput() { close(); }
         virtual const char* format_name(void) const override { return "braw"; }
         virtual bool open(const std::string& name, ImageSpec& newspec) override;
+        virtual bool open(const std::string& name, ImageSpec& newspec, const ImageSpec& config) override;
         virtual bool close() override;
         virtual int supports(string_view feature) const override
         {
@@ -92,43 +94,44 @@ static const uint8_t s_resourceChannels = 3;
 typedef float PixelType;
 
 struct Attribute {
-	const char * name;
-	const char * type;
-	uint32_t id;
+    const char * name;
+    const char * type;
+    uint32_t id;
 };
 
 Attribute s_clipAttributes[] = {
-	{"ColorScienceGen", "u16", blackmagicRawClipProcessingAttributeColorScienceGen},
-	{"Gamma", "string", blackmagicRawClipProcessingAttributeGamma},
-	{"Gamut", "string", blackmagicRawClipProcessingAttributeGamut},
-	{"ToneCurveContrast", "float", blackmagicRawClipProcessingAttributeToneCurveContrast},
-	{"ToneCurveSaturation", "float", blackmagicRawClipProcessingAttributeToneCurveSaturation},
-	{"ToneCurveMidpoint", "float", blackmagicRawClipProcessingAttributeToneCurveMidpoint},
-	{"ToneCurveHighlights", "float", blackmagicRawClipProcessingAttributeToneCurveHighlights},
-	{"ToneCurveShadows", "float", blackmagicRawClipProcessingAttributeToneCurveShadows},
-	{"ToneCurveVideoBlackLevel", "u16", blackmagicRawClipProcessingAttributeToneCurveVideoBlackLevel},
-	{"ToneCurveBlackLevel", "float", blackmagicRawClipProcessingAttributeToneCurveBlackLevel},
-	{"ToneCurveWhiteLevel", "float", blackmagicRawClipProcessingAttributeToneCurveWhiteLevel},
-	{"HighlightRecovery", "u16", blackmagicRawClipProcessingAttributeHighlightRecovery},
-	{"AnalogGain", "float", blackmagicRawClipProcessingAttributeAnalogGain},
-	{"Post3DLUTMode", "string", blackmagicRawClipProcessingAttributePost3DLUTMode},
-	{"EmbeddedPost3DLUTName", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTName},
-	{"EmbeddedPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTTitle},
-	{"EmbeddedPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTSize},
-	{"EmbeddedPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTData},
-	{"SidecarPost3DLUTName", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTName},
-	{"SidecarPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTTitle},
-	{"SidecarPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeSidecarPost3DLUTSize},
-	{"SidecarPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeSidecarPost3DLUTData},
+    {"ColorScienceGen", "u16", blackmagicRawClipProcessingAttributeColorScienceGen},
+    {"Gamma", "string", blackmagicRawClipProcessingAttributeGamma},
+    {"Gamut", "string", blackmagicRawClipProcessingAttributeGamut},
+    {"ToneCurveContrast", "float", blackmagicRawClipProcessingAttributeToneCurveContrast},
+    {"ToneCurveSaturation", "float", blackmagicRawClipProcessingAttributeToneCurveSaturation},
+    {"ToneCurveMidpoint", "float", blackmagicRawClipProcessingAttributeToneCurveMidpoint},
+    {"ToneCurveHighlights", "float", blackmagicRawClipProcessingAttributeToneCurveHighlights},
+    {"ToneCurveShadows", "float", blackmagicRawClipProcessingAttributeToneCurveShadows},
+    {"ToneCurveVideoBlackLevel", "u16", blackmagicRawClipProcessingAttributeToneCurveVideoBlackLevel},
+    {"ToneCurveBlackLevel", "float", blackmagicRawClipProcessingAttributeToneCurveBlackLevel},
+    {"ToneCurveWhiteLevel", "float", blackmagicRawClipProcessingAttributeToneCurveWhiteLevel},
+    {"HighlightRecovery", "u16", blackmagicRawClipProcessingAttributeHighlightRecovery},
+    {"AnalogGain", "float", blackmagicRawClipProcessingAttributeAnalogGain},
+    {"Post3DLUTMode", "string", blackmagicRawClipProcessingAttributePost3DLUTMode},
+    {"EmbeddedPost3DLUTName", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTName},
+    {"EmbeddedPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTTitle},
+    {"EmbeddedPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTSize},
+    {"EmbeddedPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeEmbeddedPost3DLUTData},
+    {"SidecarPost3DLUTName", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTName},
+    {"SidecarPost3DLUTTitle", "string", blackmagicRawClipProcessingAttributeSidecarPost3DLUTTitle},
+    {"SidecarPost3DLUTSize", "u16", blackmagicRawClipProcessingAttributeSidecarPost3DLUTSize},
+    {"SidecarPost3DLUTData", "float_array", blackmagicRawClipProcessingAttributeSidecarPost3DLUTData},
 };
 
 // These require access to the decoded frame and can change on a frame-by-frame basis
 // May be worth checking if we can update the ImageSpec on each ReadFrame
+// Currently only reading the first frame.
 Attribute s_frameAttributes[] = {
-	{"WhiteBalanceKelvin", "u32", blackmagicRawFrameProcessingAttributeWhiteBalanceKelvin},
-	{"WhiteBalanceTint", "s16", blackmagicRawFrameProcessingAttributeWhiteBalanceTint},
-	{"Exposure", "float", blackmagicRawFrameProcessingAttributeExposure},
-	{"ISO", "u16", blackmagicRawFrameProcessingAttributeISO}
+    {"WhiteBalanceKelvin", "u32", blackmagicRawFrameProcessingAttributeWhiteBalanceKelvin},
+    {"WhiteBalanceTint", "s16", blackmagicRawFrameProcessingAttributeWhiteBalanceTint},
+    {"Exposure", "float", blackmagicRawFrameProcessingAttributeExposure},
+    {"ISO", "u16", blackmagicRawFrameProcessingAttributeISO}
 };
 
 std::string VariantToString(const Variant& value)
@@ -186,12 +189,15 @@ std::string VariantToString(const Variant& value)
 class CameraCodecCallback : public IBlackmagicRawCallback
 {
     public:
-        explicit CameraCodecCallback() {}
+        explicit CameraCodecCallback() : metadata_mode(false) {}
         virtual ~CameraCodecCallback()
         {
+                    m_imageData.clear();
             if(m_frame != nullptr)
                 m_frame->Release();
         }
+
+                void toggleMetadataMode() { metadata_mode = !metadata_mode; }
 
         IBlackmagicRawFrame* GetFrame() { return m_frame; }
 
@@ -209,15 +215,17 @@ class CameraCodecCallback : public IBlackmagicRawCallback
                 m_frame->AddRef();
             }
 
-            if (result == S_OK)
-                result = frame->CreateJobDecodeAndProcessFrame(nullptr, nullptr, &decodeAndProcessJob);
+            if(!metadata_mode) {
+                if (result == S_OK)
+                        result = frame->CreateJobDecodeAndProcessFrame(nullptr, nullptr, &decodeAndProcessJob);
 
-            if (result == S_OK)
-                result = decodeAndProcessJob->Submit();
+                if (result == S_OK)
+                        result = decodeAndProcessJob->Submit();
 
-            if (result != S_OK) {
-                if (decodeAndProcessJob)
-                    decodeAndProcessJob->Release();
+                if (result != S_OK) {
+                        if (decodeAndProcessJob)
+                                decodeAndProcessJob->Release();
+                }
             }
 
             readJob->Release();
@@ -225,29 +233,30 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
         virtual void ProcessComplete(IBlackmagicRawJob* job, HRESULT result, IBlackmagicRawProcessedImage* processedImage)
         {
-            uint32_t byteSize = 0;
-            uint32_t width = 0;
-            uint32_t height = 0;
-            uint8_t channels = s_resourceChannels;
-            void* imageData = nullptr;
+            if(!metadata_mode) {
+                uint32_t width = 0;
+                uint32_t height = 0;
+                uint8_t channels = s_resourceChannels;
+                void* imageData = nullptr;
 
-            if (result == S_OK)
-                result = processedImage->GetWidth(&width);
+                if (result == S_OK)
+                        result = processedImage->GetWidth(&width);
 
-            if (result == S_OK)
-                result = processedImage->GetHeight(&height);
+                if (result == S_OK)
+                        result = processedImage->GetHeight(&height);
 
-            if (result == S_OK)
-                result = processedImage->GetResource(&imageData);
+                if (result == S_OK)
+                        result = processedImage->GetResource(&imageData);
 
-            if (result == S_OK)
-                result = processedImage->GetResourceSizeBytes(&byteSize);
+                if (result == S_OK)
+                    result = processedImage->GetResourceSizeBytes(&byteSize);
 
-            if (result == S_OK) {
-                uint32_t expectedByteSize = width * height * channels * sizeof(PixelType);
-                if (byteSize == expectedByteSize) {
-                    m_imageData.resize(expectedByteSize);
-                    memcpy(m_imageData.data(), imageData, expectedByteSize);
+                if (result == S_OK) {
+                    uint32_t expectedByteSize = width * height * channels * sizeof(PixelType);
+                    if (byteSize == expectedByteSize) {
+                        m_imageData.resize(expectedByteSize);
+                        memcpy(m_imageData.data(), imageData, expectedByteSize);
+                    }
                 }
             }
 
@@ -278,6 +287,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
     private:
         std::vector<uint8_t> m_imageData;
         IBlackmagicRawFrame* m_frame = nullptr;
+        bool metadata_mode;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -286,6 +296,15 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
 bool
 BrawInput::open(const std::string& name, ImageSpec& newspec)
+{
+    // If user doesn't want to provide any config, just use an empty spec.
+    ImageSpec config;
+    return open(name, newspec, config);
+}
+
+bool
+BrawInput::open(const std::string& name, ImageSpec& newspec,
+                const ImageSpec& config)
 {
 #ifdef BRAW_LIBRARIES
 #define STRINGIFY2(X) #X
@@ -333,9 +352,69 @@ BrawInput::open(const std::string& name, ImageSpec& newspec)
     m_nsubimages = m_frame_count;
     m_spec = ImageSpec((int)m_width, (int)m_height, s_resourceChannels, BaseTypeFromC<PixelType>::value);
     m_spec.attribute("oiio:Movie", true);
+
+    m_callback->toggleMetadataMode();
     fill_metadata(m_spec);
+    m_callback->toggleMetadataMode();
+
+    // User defined colorspace (Gamma & Gamut)
+    IBlackmagicRawConstants* constant;
+    result = m_codec->QueryInterface(IID_IBlackmagicRawConstants, (void**)&constant);
+    if (result != S_OK) {
+        errorf("Failed to get IBlackmagicRawConstants");
+        return false;
+    }
+
+    const char* cameraType;
+    m_clip->GetCameraType(&cameraType);
+
+    std::string gamut = config.get_string_attribute("braw:gamut", "ACES APO");
+    std::string gamma = config.get_string_attribute("braw:gamma", "linear");
+    std::vector<Variant> values(56);
+    uint32_t number_values = 0;
+
+    auto return_value = [&] (const std::string& value) {
+        for (uint32_t i = 0; i < number_values; i++) {
+            if (value == VariantToString(values[i]))
+                return value;
+        }
+        return std::string("");
+    };
+
+    // Gamut
+    result = constant->GetClipProcessingAttributeList(
+            cameraType,
+            blackmagicRawClipProcessingAttributeGamut,
+            &values[0],
+            &number_values);
+
+    if(result != S_OK) {
+        errorf("Failed to get blackmagicRawClipProcessingAttributeGamut");
+        return false;
+    }
+
+    gamut = return_value(gamut);
+    gamut = gamut == "" ? "ACES AP0" : gamut;
+
+    // Gamma
+    result = constant->GetClipProcessingAttributeList(
+            cameraType,
+            blackmagicRawClipProcessingAttributeGamma,
+            &values[0],
+            &number_values);
+
+    if(result != S_OK) {
+        errorf("Failed to get blackmagicRawClipProcessingAttributeGamma");
+        return false;
+    }
+
+    gamma = return_value(gamma);
+    gamma = gamma == "" ? "Linear" : gamma;
+
+    m_spec.attribute("oiio:ColorSpace", gamut + "." + gamma);
 
     newspec = m_spec;
+
     return true;
 }
 
@@ -352,7 +431,7 @@ BrawInput::fill_metadata(ImageSpec &spec)
 
     HRESULT result = m_clip->GetMetadataIterator(&clipMetadataIterator);
     if (result != S_OK) {
-        errorf("Failed to get metdata iterator\n");
+        errorf("Failed to get clip metadata iterator\n");
         return false;
     }
 
@@ -402,7 +481,70 @@ BrawInput::fill_metadata(ImageSpec &spec)
         VariantClear(&value);
     }
 
-    m_spec.attribute("oiio:ColorSpace", gamut + "." + gamma);
+    // Get first frame
+    IBlackmagicRawJob* readJob = nullptr;
+
+    result = m_clip->CreateJobReadFrame(0, &readJob);
+    if (result != S_OK) {
+            errorf("Failed to create IBlackmagicRawJob!");
+            return false;
+    }
+
+    result = readJob->Submit();
+    if (result != S_OK) {
+            readJob->Release();
+            errorf("Failed to submit IBlackmagicRawJob!");
+            return false;
+    }
+    m_codec->FlushJobs();
+    IBlackmagicRawFrame* frame = m_callback->GetFrame();
+    IBlackmagicRawMetadataIterator* frameMetadataIterator = nullptr;
+
+    result = frame->GetMetadataIterator(&frameMetadataIterator);
+    if (result != S_OK) {
+        errorf("Failed to get frame metadata iterator\n");
+    }
+
+    // Frame Metadata
+    while (SUCCEEDED(frameMetadataIterator->GetKey(&key))) {
+            VariantInit(&value);
+
+            result = frameMetadataIterator->GetData(&value);
+            if (result != S_OK) {
+                    errorf("Failed to get data from IBlackmagicRawMetadataIterator!");
+                    break;
+            }
+
+            spec.attribute(key, VariantToString(value));
+            VariantClear(&value);
+
+            frameMetadataIterator->Next();
+    }
+
+    if(frameMetadataIterator != nullptr)
+            frameMetadataIterator->Release();
+
+    // Frame Processing Metadata
+    IBlackmagicRawFrameProcessingAttributes* frameProcessingAttributes = nullptr;
+
+    result = frame->QueryInterface(IID_IBlackmagicRawFrameProcessingAttributes, (void**)&frameProcessingAttributes);
+    if (result != S_OK) {
+        errorf("Failed to get frame processing attributes\n");
+        return false;
+    }
+
+    for (Attribute& attrib : s_frameAttributes) {
+        VariantInit(&value);
+
+        frameProcessingAttributes->GetFrameAttribute(attrib.id, &value);
+        std::string keyStr = "braw_frame_processing_attrib/" + std::string(attrib.name);
+        std::string valueStr = VariantToString(value);
+        spec.attribute(keyStr, valueStr);
+
+        VariantClear(&value);
+    }
+
+    spec.attribute("oiio:ColorSpace", gamut + "." + gamma);
 
     return true;
 }
