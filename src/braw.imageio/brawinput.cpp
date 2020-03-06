@@ -225,6 +225,7 @@ class CameraCodecCallback : public IBlackmagicRawCallback
 
         virtual void ProcessComplete(IBlackmagicRawJob* job, HRESULT result, IBlackmagicRawProcessedImage* processedImage)
         {
+            uint32_t byteSize = 0;
             uint32_t width = 0;
             uint32_t height = 0;
             uint8_t channels = s_resourceChannels;
@@ -239,9 +240,15 @@ class CameraCodecCallback : public IBlackmagicRawCallback
             if (result == S_OK)
                 result = processedImage->GetResource(&imageData);
 
+            if (result == S_OK)
+                result = processedImage->GetResourceSizeBytes(&byteSize);
+
             if (result == S_OK) {
-                m_imageData.resize(width * height * channels * sizeof(PixelType));
-                memcpy(m_imageData.data(), imageData, m_imageData.size());
+                uint32_t expectedByteSize = width * height * channels * sizeof(PixelType);
+                if (byteSize == expectedByteSize) {
+                    m_imageData.resize(expectedByteSize);
+                    memcpy(m_imageData.data(), imageData, expectedByteSize);
+                }
             }
 
             job->Release();
